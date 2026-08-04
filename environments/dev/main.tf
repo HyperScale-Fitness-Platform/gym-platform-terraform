@@ -16,6 +16,7 @@ module "ecr" {
   source = "../../modules/ecr"
   repository_names = [
     "gym-auth-service",
+    "gym-api-gateway",
   ]
 }
 
