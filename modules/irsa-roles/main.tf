@@ -1,3 +1,7 @@
+locals {
+  oidc_url_cleaned = replace(var.oidc_provider_url, "https://", "")
+}
+
 # ============================================================
 # AWS Load Balancer Controller — IAM role + policy
 # ============================================================
@@ -29,8 +33,14 @@ data "aws_iam_policy_document" "alb_controller_trust" {
 
     condition {
       test     = "StringEquals"
-      variable = "${var.oidc_provider_url}:sub"
+      variable = "${local.oidc_url_cleaned}:sub"
       values   = ["system:serviceaccount:kube-system:aws-load-balancer-controller"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_url_cleaned}:aud"
+      values   = ["sts.amazonaws.com"]
     }
   }
 }
@@ -83,8 +93,14 @@ data "aws_iam_policy_document" "external_secrets_trust" {
 
     condition {
       test     = "StringEquals"
-      variable = "${var.oidc_provider_url}:sub"
+      variable = "${local.oidc_url_cleaned}:sub"
       values   = ["system:serviceaccount:external-secrets:external-secrets"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_url_cleaned}:aud"
+      values   = ["sts.amazonaws.com"]
     }
   }
 }

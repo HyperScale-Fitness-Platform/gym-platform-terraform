@@ -1,3 +1,4 @@
+
 resource "aws_db_subnet_group" "this" {
   name       = "${var.service_name}-subnet-group"
   subnet_ids = var.private_subnets
@@ -32,11 +33,8 @@ resource "aws_db_instance" "this" {
   allocated_storage = 20
   db_name           = var.db_name
 
-  # This is the direct equivalent of checking "Manage master credentials
-  # in AWS Secrets Manager" in the console — Terraform creates the
-  # secret automatically and RDS manages rotation.
-  manage_master_user_password = true
-  username                    = "${var.service_name}_admin"
+  username = "${var.service_name}_admin"
+  password = var.password
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.rds.id]

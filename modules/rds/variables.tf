@@ -13,3 +13,7 @@ variable "node_security_group_id" {
 variable "db_name" {
   type = string
 }
+variable "password" {
+  type      = string
+  sensitive = true
+}
