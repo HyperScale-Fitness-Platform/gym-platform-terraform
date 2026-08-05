@@ -35,6 +35,10 @@ resource "helm_release" "external_secrets" {
 
   set = [
     {
+      name  = "installCRDs"
+      value = "true"
+    },
+    {
       name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
       value = var.external_secrets_role_arn
     },
