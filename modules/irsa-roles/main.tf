@@ -129,7 +129,7 @@ module "ebs_csi_irsa_role" {
   oidc_providers = {
     main = {
       provider_arn               = var.oidc_provider_arn
-      service_account_namespaces = ["kube-system:ebs-csi-controller-sa"]
+      namespace_service_accounts = ["kube-system:ebs-csi-controller-sa"]
     }
   }
 }
