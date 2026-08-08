@@ -51,19 +51,18 @@ resource "helm_release" "external_secrets" {
 
 
 # Jenkins
-resource "kubernetes_namespace" "jenkins" {
-  metadata {
-    name = "jenkins"
-  }
-}
-
-# Install Jenkins via Helm
 resource "helm_release" "jenkins" {
   name       = "jenkins"
   repository = "https://charts.jenkins.io"
   chart      = "jenkins"
-  version    = "5.1.2" 
-  namespace  = kubernetes_namespace.jenkins.metadata[0].name
+  version    = "5.1.2"
+  namespace        = "jenkins" 
+  create_namespace = true
+
+  # Ensure failed installations are rolled back so names can be reused
+  cleanup_on_fail  = true
+  atomic           = true
+  timeout          = 600
 
   # Pass custom values to override default chart behavior
   values = [
@@ -83,6 +82,11 @@ resource "helm_release" "jenkins" {
         username: "admin"
         existingSecret: "jenkins-admin-credentials"
         passwordKey: "jenkins-admin-password"
+        
+      persistence:
+        enabled: true
+        storageClass: "gp3"
+        size: "8Gi"
     EOT
   ]
 }
