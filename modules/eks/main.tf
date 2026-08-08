@@ -16,7 +16,7 @@ module "eks" {
   # With IRSA, you can attach a fine-grained AWS IAM role directly to a specific Kubernetes application container dynamically.
   enable_irsa = true
 
-  #create_cloudwatch_log_group = false
+  create_cloudwatch_log_group = false
 
   eks_managed_node_groups = {
     gym_nodes = {
