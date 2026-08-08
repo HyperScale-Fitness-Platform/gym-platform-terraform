@@ -19,8 +19,9 @@ module "helm_addons" {
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name             = module.eks.cluster_name
   addon_name               = "aws-ebs-csi-driver"
-  addon_version            = "v1.30.0-build.1"
   service_account_role_arn = module.irsa_roles.ebs_csi_role_arn
+
+  depends_on = [module.irsa_roles, module.eks]
 }
 
 # Add default gp3 StorageClass to fix PVC pending issue
@@ -40,5 +41,5 @@ resource "kubernetes_storage_class" "ebs_gp3" {
     type = "gp3"
   }
 
-  depends_on = [module.eks]
+  depends_on = [aws_eks_addon.ebs_csi]
 }
