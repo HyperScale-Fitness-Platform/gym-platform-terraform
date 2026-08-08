@@ -14,3 +14,31 @@ module "helm_addons" {
   external_secrets_role_arn = module.irsa_roles.external_secrets_role_arn
   depends_on                = [module.eks, module.irsa_roles]
 }
+
+# Attach EBS CSI Addon cleanly after EKS + IRSA are ready
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  addon_version            = "v1.30.0-build.1"
+  service_account_role_arn = module.irsa_roles.ebs_csi_role_arn
+}
+
+# Add default gp3 StorageClass to fix PVC pending issue
+resource "kubernetes_storage_class" "ebs_gp3" {
+  metadata {
+    name = "gp3"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+  volume_binding_mode = "WaitForFirstConsumer"
+  reclaim_policy      = "Delete"
+
+  parameters = {
+    type = "gp3"
+  }
+
+  depends_on = [module.eks]
+}
