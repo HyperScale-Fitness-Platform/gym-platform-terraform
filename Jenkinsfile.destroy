@@ -31,7 +31,7 @@ pipeline {
         stage('Destroy Helm Services (Layer 2)') {
             steps {
                 dir("${env.SERVICES_DIR}") {
-                    sh 'terraform init'
+                    sh 'terraform init -reconfigure'
                     sh 'terraform destroy -auto-approve'
                 }
             }
@@ -57,7 +57,7 @@ pipeline {
         stage('Destroy EKS & Infrastructure (Layer 1)') {
             steps {
                 dir("${env.INFRA_DIR}") {
-                    sh 'terraform init'
+                    sh 'terraform init -reconfigure'
                     sh 'terraform destroy -auto-approve'
                 }
             }
