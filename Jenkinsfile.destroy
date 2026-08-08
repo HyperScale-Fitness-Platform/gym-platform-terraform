@@ -3,7 +3,6 @@ pipeline {
 
     options {
         disableConcurrentBuilds()
-        wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm'])
     }
 
     environment {

@@ -4,7 +4,6 @@ pipeline {
     // Prevent concurrent runs from conflicting on Terraform state
     options {
         disableConcurrentBuilds()
-        wrap([$class: 'AnsiColorBuildWrapper', colorMapName: 'xterm'])
     }
 
     environment {
