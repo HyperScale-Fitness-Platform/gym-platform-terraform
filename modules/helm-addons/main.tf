@@ -60,8 +60,8 @@ resource "helm_release" "jenkins" {
   create_namespace = true
 
   # Ensure failed installations are rolled back so names can be reused
-  cleanup_on_fail  = true
-  atomic           = true
+  # cleanup_on_fail  = true
+  # atomic           = true
   timeout          = 600
 
   # Pass custom values to override default chart behavior
@@ -82,7 +82,7 @@ resource "helm_release" "jenkins" {
         username: "admin"
         existingSecret: "jenkins-admin-credentials"
         passwordKey: "jenkins-admin-password"
-        
+
       persistence:
         enabled: true
         storageClass: "gp3"
