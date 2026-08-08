@@ -53,7 +53,7 @@ pipeline {
             steps {
                 dir("${env.INFRA_DIR}") {
                     sh 'terraform init'
-                    sh 'terraform import 'module.eks.module.eks.aws_eks_cluster.this[0]' gym-cluster'
+                    sh "terraform import 'module.eks.module.eks.aws_eks_cluster.this[0]' gym-cluster"
                     sh 'terraform apply -auto-approve'
                 }
             }
