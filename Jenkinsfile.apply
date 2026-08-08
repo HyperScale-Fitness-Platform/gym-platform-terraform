@@ -16,7 +16,8 @@ pipeline {
         AWS_DEFAULT_REGION    = 'us-east-1'
         
         SECRET_NAME           = 'eks/jenkins/admin-password'
-        TF_DIR                = './env' 
+        INFRA_DIR             = './infrastructure'
+        SERVICES_DIR          = './services'
         MANIFESTS_DIR         = './k8s'
     }
 
@@ -48,60 +49,36 @@ pipeline {
             }
         }
 
-        stage('Terraform Init') {
+        stage('Deploy EKS & Infrastructure (Layer 1)') {
             steps {
-                dir("${env.TF_DIR}") {
+                dir("${env.INFRA_DIR}") {
                     sh 'terraform init'
+                    sh 'terraform apply -auto-approve'
                 }
             }
         }
 
-        stage('Terraform Validate & Format') {
-            steps {
-                dir("${env.TF_DIR}") {
-                    sh 'terraform fmt -check'
-                    sh 'terraform validate'
-                }
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                dir("${env.TF_DIR}") {
-                    // Save plan output to a file
-                    sh 'terraform plan -out=tfplan'
-                }
-            }
-        }
-
-        stage('Approval') {
-            steps {
-                script {
-                    // Pause execution for manual confirmation before applying changes
-                    input message: 'Do you want to apply this Terraform plan?', 
-                          ok: 'Apply'
-                }
-            }
-        }
-
-        stage('Terraform Apply') {
-            steps {
-                dir("${env.TF_DIR}") {
-                    // Apply saved plan file directly
-                    sh 'terraform apply -input=false tfplan'
-                }
-            }
-        }
-
-        stage('Apply Kubernetes Manifests') {
+        stage('Pre-Create K8s Namespace & External Secrets') {
             steps {
                 sh '''
-                    # Update local kubeconfig to connect kubectl to the newly provisioned EKS cluster
+                    # Update kubeconfig for cluster access
                     aws eks update-kubeconfig --region us-east-1 --name gym-cluster
 
-                    # Apply ClusterSecretStore and ExternalSecret YAML files
+                    # Create jenkins namespace if it does not exist
+                    kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
+
+                    # Apply ClusterSecretStore and ExternalSecret to sync secret BEFORE Helm installs
                     kubectl apply -f ${MANIFESTS_DIR}/
                 '''
+            }
+        }
+
+        stage('Deploy Helm Services (Layer 2)') {
+            steps {
+                dir("${env.SERVICES_DIR}") {
+                    sh 'terraform init'
+                    sh 'terraform apply -auto-approve'
+                }
             }
         }
     }
@@ -109,7 +86,7 @@ pipeline {
     post {
         always {
             // Clean up saved plan file to protect sensitive data
-            dir("${env.TF_DIR}") {
+            dir("${env.INFRA_DIR}") {
                 sh 'rm -f tfplan'
             }
         }
