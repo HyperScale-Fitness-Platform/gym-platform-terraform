@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        terraform 'Terraform'
+    }
+
     // Prevent concurrent runs from conflicting on Terraform state
     options {
         disableConcurrentBuilds()

@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        terraform 'Terraform'
+    }
+
     options {
         disableConcurrentBuilds()
     }
