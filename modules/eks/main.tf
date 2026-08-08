@@ -31,6 +31,5 @@ module "eks" {
     vpc-cni    = {}
     coredns    = {}
     kube-proxy = {}
-    #aws-ebs-csi-driver = {attach_node_iam_policy = true}
   }
 }
