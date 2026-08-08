@@ -6,8 +6,8 @@ resource "helm_release" "jenkins" {
   namespace        = "jenkins"
   create_namespace = true
 
-  cleanup_on_fail  = true
-  atomic           = true
+  # cleanup_on_fail  = true
+  # atomic           = true
   timeout          = 600
 
   values = [
