@@ -1,0 +1,100 @@
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+    }
+
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+        AWS_DEFAULT_REGION    = 'us-east-1'
+        
+        EKS_CLUSTER_NAME      = 'gym-cluster'
+        SECRET_NAME           = 'eks/jenkins/admin-password'
+        TF_DIR                = './env'
+        MANIFESTS_DIR         = './k8s'
+        CLEANUP_SCRIPT        = './pre-destroy-cleanup.sh'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Delete Kubernetes Manifests') {
+            steps {
+                sh '''
+                    # Try connecting to EKS cluster; if cluster is already gone, continue safely
+                    if aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${EKS_CLUSTER_NAME} > /dev/null 2>&1; then
+                        echo "Deleting ExternalSecret and ClusterSecretStore resources..."
+                        kubectl delete -f ${MANIFESTS_DIR}/ --ignore-not-found=true || true
+                    else
+                        echo "EKS cluster non-existent or unreachable, skipping kubectl delete."
+                    fi
+                '''
+            }
+        }
+
+        stage('Terraform Plan Destroy') {
+            steps {
+                dir("${env.TF_DIR}") {
+                    sh 'terraform init'
+                    sh 'terraform plan -destroy -out=destroy.tfplan'
+                }
+            }
+        }
+
+        stage('Manual Destruction Approval') {
+            steps {
+                script {
+                    input message: 'CRITICAL WARNING: Are you sure you want to DESTROY all infrastructure (EKS, VPC, ECR images)?', 
+                          ok: 'Destroy Infrastructure',
+                          submitterParameter: 'APPROVED_BY'
+                    
+                    echo "Destruction approved by: ${env.APPROVED_BY}"
+                }
+            }
+        }
+
+        stage('Execute Pre-Destroy Script & Terraform Destroy') {
+            steps {
+                sh '''
+                    # Ensure script is executable and run it directly from repository
+                    chmod +x ${CLEANUP_SCRIPT}
+                    ${CLEANUP_SCRIPT}
+                '''
+            }
+        }
+
+        stage('Delete AWS Secrets Manager Entry') {
+            steps {
+                sh '''
+                    if aws secretsmanager describe-secret --secret-id "${SECRET_NAME}" > /dev/null 2>&1; then
+                        echo "Deleting Secret '${SECRET_NAME}' from AWS Secrets Manager..."
+                        aws secretsmanager delete-secret \
+                            --secret-id "${SECRET_NAME}" \
+                            --force-delete-without-recovery
+                        echo "✓ Secret deleted successfully."
+                    else
+                        echo "✓ Secret '${SECRET_NAME}' not found or already deleted."
+                    fi
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            dir("${env.TF_DIR}") {
+                sh 'rm -f destroy.tfplan'
+            }
+        }
+        failure {
+            echo 'Terraform Destroy Pipeline failed!'
+        }
+    }
+}

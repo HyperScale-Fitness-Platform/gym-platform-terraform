@@ -48,3 +48,41 @@ resource "helm_release" "external_secrets" {
     }
   ]
 }
+
+
+# Jenkins
+resource "kubernetes_namespace" "jenkins" {
+  metadata {
+    name = "jenkins"
+  }
+}
+
+# Install Jenkins via Helm
+resource "helm_release" "jenkins" {
+  name       = "jenkins"
+  repository = "https://charts.jenkins.io"
+  chart      = "jenkins"
+  version    = "5.1.2" 
+  namespace  = kubernetes_namespace.jenkins.metadata[0].name
+
+  # Pass custom values to override default chart behavior
+  values = [
+    <<-EOT
+    controller:
+      componentName: "jenkins-controller"
+      # Allocate adequate resources for EKS worker nodes
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1024Mi"
+        limits:
+          cpu: "2000m"
+          memory: "2048Mi"
+      serviceType: "ClusterIP"
+      admin:
+        username: "admin"
+        existingSecret: "jenkins-admin-credentials"
+        passwordKey: "jenkins-admin-password"
+    EOT
+  ]
+}
