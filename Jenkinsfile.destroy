@@ -26,11 +26,11 @@ pipeline {
             }
         }
 
-        stage('Delete ECR Images & s3 Bucket for the statefile') {
+        stage('Delete ECR Images') {
             steps {
                 sh '''
-                    chmod +x ./scripts/pre-destroy.sh
-                    ./scripts/pre-destroy.sh
+                    chmod +x ./scripts/delete-ecr-images.sh
+                    ./scripts/delete-ecr-images.sh
                 '''
             }
         }
@@ -73,6 +73,15 @@ pipeline {
                     sh 'terraform init -reconfigure -input=false'
                     sh 'terraform destroy -auto-approve -input=false'
                 }
+            }
+        }
+
+        stage('Delete S3 Backend & DynamoDB Table') {
+            steps {
+                sh '''
+                    chmod +x ./scripts/delete-s3.sh
+                    ./scripts/delete-s3.sh
+                '''
             }
         }
     }
