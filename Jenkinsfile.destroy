@@ -5,7 +5,6 @@ pipeline {
         terraform 'Terraform'
     }
 
-    // Prevent concurrent runs from conflicting on Terraform state
     options {
         disableConcurrentBuilds()
     }
@@ -15,10 +14,9 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         AWS_DEFAULT_REGION    = 'us-east-1'
         
-        SECRET_NAME           = 'eks/jenkins/admin-password'
         INFRA_DIR             = './infrastructure'
         SERVICES_DIR          = './services'
-        MANIFESTS_DIR         = './k8s'
+        CLUSTER_NAME          = 'gym-cluster'
     }
 
     stages {
@@ -28,81 +26,75 @@ pipeline {
             }
         }
 
-       stage('Destroy Helm Services (Layer 2)') {
+        stage('Delete ECR Images') {
+            steps {
+                sh '''
+                    chmod +x ./scripts/pre-destroy.sh
+                    ./scripts/pre-destroy.sh
+                '''
+            }
+        }
+
+        stage('Destroy Layer 2: Helm Services') {
             steps {
                 dir("${env.SERVICES_DIR}") {
                     sh '''
-                        # Wipe leftover cached terraform state/modules directory
-                        rm -rf .terraform .terraform.lock.hcl
-                        
-                        # Re-initialize cleanly
-                        terraform init -reconfigure -input=false
-                        
-                        # Destroy resources
-                        terraform destroy -auto-approve -input=false
+                        terraform init
+                        terraform destroy -auto-approve
                     '''
                 }
             }
         }
 
-        stage('Delete K8s Manifests & Namespaces') {
+        stage('Clean Kubernetes Namespaces & Finalizers') {
             steps {
                 sh '''
-                    aws eks update-kubeconfig --region us-east-1 --name gym-cluster || true
-                    kubectl delete -f ${MANIFESTS_DIR}/ --ignore-not-found
-                    kubectl delete namespace jenkins --ignore-not-found
+                    # Connect to EKS cluster if still accessible
+                    if aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} > /dev/null 2>&1; then
+                        echo "Cleaning up lingering K8s namespaces and resources..."
+                        
+                        # Delete Argo CD applications to trigger graceful resource deletion
+                        kubectl delete applications --all -n argocd --timeout=60s || true
+                        
+                        # Delete target namespaces
+                        kubectl delete namespace argocd --ignore-not-found=true --timeout=60s || true
+                        kubectl delete namespace jenkins --ignore-not-found=true --timeout=60s || true
+                        kubectl delete namespace external-secrets --ignore-not-found=true --timeout=60s || true
+                    else
+                        echo "Cluster not reachable or already partially destroyed. Skipping K8s cleanup."
+                    fi
                 '''
             }
         }
 
-        stage('Destroy EKS & Infrastructure (Layer 1)') {
+        stage('Destroy Layer 1: EKS & Infrastructure') {
             steps {
                 dir("${env.INFRA_DIR}") {
                     sh '''
-                        # Wipe leftover cached terraform state/modules directory
-                        rm -rf .terraform .terraform.lock.hcl
-                        
-                        # Re-initialize cleanly
-                        terraform init -reconfigure -input=false
-                        
-                        # Destroy resources
-                        terraform destroy -auto-approve -input=false
+                        terraform init
+                        terraform destroy -auto-approve
                     '''
                 }
-            }
-        }
-
-        stage('Delete Secrets from AWS Secrets Manager') {
-            steps {
-                sh '''
-                    # Force delete secret without recovery window if present
-                    if aws secretsmanager describe-secret --secret-id "${SECRET_NAME}" > /dev/null 2>&1; then
-                        echo "Deleting secret '${SECRET_NAME}'..."
-                        aws secretsmanager delete-secret \
-                            --secret-id "${SECRET_NAME}" \
-                            --force-delete-without-recovery
-                    else
-                        echo "Secret '${SECRET_NAME}' does not exist. Skipping."
-                    fi
-                '''
             }
         }
     }
 
     post {
         always {
-            dir("${env.INFRA_DIR}") {
+            dir("${env.SERVICES_DIR}") {
                 sh 'rm -f tfplan'
             }
-            dir("${env.SERVICES_DIR}") {
+            dir("${env.INFRA_DIR}") {
                 sh 'rm -f tfplan'
             }
         }
         success {
-            echo 'Infrastructure and services destroyed successfully!'
+            echo '=========================================================='
+            echo '  ALL INFRASTRUCTURE AND SERVICES SUCCESSFULLY DESTROYED  '
+            echo '=========================================================='
         }
         failure {
-            echo 'Infrastructure Destroy Pipeline failed!'
+            echo 'Terraform Destroy Pipeline Failed! Check console output for orphaned resources.'
         }
     }
 }
