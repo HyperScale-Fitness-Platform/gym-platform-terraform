@@ -2,7 +2,6 @@ resource "helm_release" "jenkins" {
   name             = "jenkins"
   repository       = "https://charts.jenkins.io"
   chart            = "jenkins"
-  version          = "5.1.2"
   namespace        = "jenkins"
   create_namespace = true
 
@@ -24,6 +23,7 @@ resource "helm_release" "jenkins" {
       serviceType: "ClusterIP"
       admin:
         username: "admin"
+        userKey: ""
         existingSecret: "jenkins-admin-credentials"
         passwordKey: "jenkins-admin-password"
 
