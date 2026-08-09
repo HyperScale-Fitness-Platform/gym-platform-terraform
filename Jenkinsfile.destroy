@@ -38,10 +38,9 @@ pipeline {
         stage('Destroy Layer 2: Helm Services') {
             steps {
                 dir("${env.SERVICES_DIR}") {
-                    sh '''
-                        terraform init -reconfigure
-                        terraform destroy -auto-approve
-                    '''
+                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
+                    sh 'terraform init -reconfigure -input=false'
+                    sh 'terraform destroy -auto-approve -input=false'
                 }
             }
         }
@@ -70,10 +69,9 @@ pipeline {
         stage('Destroy Layer 1: EKS & Infrastructure') {
             steps {
                 dir("${env.INFRA_DIR}") {
-                    sh '''
-                        terraform init -reconfigure
-                        terraform destroy -auto-approve
-                    '''
+                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
+                    sh 'terraform init -reconfigure -input=false'
+                    sh 'terraform destroy -auto-approve -input=false'
                 }
             }
         }
