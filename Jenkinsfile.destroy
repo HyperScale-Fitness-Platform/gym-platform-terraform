@@ -38,9 +38,15 @@ pipeline {
         stage('Destroy Layer 2: Helm Services') {
             steps {
                 dir("${env.SERVICES_DIR}") {
-                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
-                    sh 'terraform init -reconfigure -input=false'
-                    sh 'terraform destroy -auto-approve -input=false'
+                    sh '''
+                        # Update kubeconfig so Helm/Kubernetes providers can authenticate
+                        aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} || true
+                        
+                        terraform init -migrate-state -force-copy -input=false
+                        
+                        # Attempt graceful Helm destroy; allow pipeline to proceed if EKS API is unresponsive
+                        terraform destroy -auto-approve -input=false || echo "Helm uninstall failed/timed out. Proceeding to infrastructure destroy."
+                    '''
                 }
             }
         }
@@ -48,19 +54,19 @@ pipeline {
         stage('Clean Kubernetes Namespaces & Finalizers') {
             steps {
                 sh '''
-                    # Connect to EKS cluster if still accessible
                     if aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} > /dev/null 2>&1; then
                         echo "Cleaning up lingering K8s namespaces and resources..."
                         
-                        # Delete Argo CD applications to trigger graceful resource deletion
-                        kubectl delete applications --all -n argocd --timeout=60s || true
+                        # Strip finalizers from Argo CD applications to prevent deletion blocks
+                        kubectl get applications -n argocd -o name 2>/dev/null | xargs -I {} kubectl patch {} -n argocd -p '{"metadata":{"finalizers":null}}' --type=merge || true
+                        kubectl delete applications --all -n argocd --timeout=30s || true
                         
                         # Delete target namespaces
-                        kubectl delete namespace argocd --ignore-not-found=true --timeout=60s || true
-                        kubectl delete namespace jenkins --ignore-not-found=true --timeout=60s || true
-                        kubectl delete namespace external-secrets --ignore-not-found=true --timeout=60s || true
+                        kubectl delete namespace argocd --ignore-not-found=true --timeout=30s || true
+                        kubectl delete namespace jenkins --ignore-not-found=true --timeout=30s || true
+                        kubectl delete namespace external-secrets --ignore-not-found=true --timeout=30s || true
                     else
-                        echo "Cluster not reachable or already partially destroyed. Skipping K8s cleanup."
+                        echo "Cluster not reachable. Skipping K8s namespace cleanup."
                     fi
                 '''
             }
@@ -69,9 +75,10 @@ pipeline {
         stage('Destroy Layer 1: EKS & Infrastructure') {
             steps {
                 dir("${env.INFRA_DIR}") {
-                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
-                    sh 'terraform init -reconfigure -input=false'
-                    sh 'terraform destroy -auto-approve -input=false'
+                    sh '''
+                        terraform init -migrate-state -force-copy -input=false
+                        terraform destroy -auto-approve -input=false
+                    '''
                 }
             }
         }
