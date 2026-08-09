@@ -24,6 +24,6 @@ aws dynamodb create-table \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST \
-  --region "$AWS_REGION"
-
+  --region "$AWS_REGION" 2>/dev/null || true
+  
 echo "✓ S3 Bucket and DynamoDB Lock Table created successfully."

@@ -39,7 +39,7 @@ pipeline {
             steps {
                 dir("${env.SERVICES_DIR}") {
                     sh '''
-                        terraform init
+                        terraform init -reconfigure
                         terraform destroy -auto-approve
                     '''
                 }
@@ -71,7 +71,7 @@ pipeline {
             steps {
                 dir("${env.INFRA_DIR}") {
                     sh '''
-                        terraform init
+                        terraform init -reconfigure
                         terraform destroy -auto-approve
                     '''
                 }
