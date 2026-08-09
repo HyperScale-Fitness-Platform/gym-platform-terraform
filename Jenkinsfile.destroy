@@ -26,7 +26,7 @@ pipeline {
             }
         }
 
-        stage('Delete ECR Images') {
+        stage('Delete ECR Images & s3 Bucket for the statefile') {
             steps {
                 sh '''
                     chmod +x ./scripts/pre-destroy.sh
