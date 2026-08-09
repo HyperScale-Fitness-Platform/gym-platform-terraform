@@ -61,8 +61,9 @@ pipeline {
         stage('Deploy EKS & Infrastructure (Layer 1)') {
             steps {
                 dir("${env.INFRA_DIR}") {
-                    sh 'terraform init -reconfigure'
-                    sh 'terraform apply -auto-approve'
+                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
+                    sh 'terraform init -reconfigure -input=false'
+                    sh 'terraform apply -auto-approve -input=false'
                 }
             }
         }
@@ -83,10 +84,9 @@ pipeline {
             }
         }
 
-        stage('Deploy EKS & Infrastructure (Layer 1)') {
+        stage('Deploy Helm Services (Layer 2)') {
             steps {
-                dir("${env.INFRA_DIR}") {
-                    // Clean up any stale local state files from workspace cache
+                dir("${env.SERVICES_DIR}") {
                     sh 'rm -f terraform.tfstate terraform.tfstate.backup'
                     sh 'terraform init -reconfigure -input=false'
                     sh 'terraform apply -auto-approve -input=false'
