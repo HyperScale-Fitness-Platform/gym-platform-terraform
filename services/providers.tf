@@ -1,18 +1,35 @@
 terraform {
-  required_version = ">= 1.5.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.0"
-    }
     helm = {
       source  = "hashicorp/helm"
       version = "~> 3.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.0"
+    }
+  }
+
+  backend "s3" {
+    bucket         = "gym-platform-tfstate-bucket"  # Same bucket name
+    key            = "services/terraform.tfstate"
+    region         = "us-east-1"
+    use_lockfile = true
+    encrypt        = true
+  }
+}
+
+# Reads Layer 1 state directly from S3
+data "terraform_remote_state" "infra" {
+  backend = "s3"
+  config = {
+    bucket = "gym-platform-tfstate-bucket"
+    key    = "infrastructure/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 

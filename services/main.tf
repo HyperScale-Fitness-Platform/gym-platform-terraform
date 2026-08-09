@@ -34,3 +34,33 @@ resource "helm_release" "jenkins" {
     EOT
   ]
 }
+
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  namespace        = "argocd"
+  create_namespace = true
+  timeout          = 600
+
+  values = [
+    <<-EOT
+    global:
+      domain: "argocd.local"
+
+    server:
+      service:
+        type: "ClusterIP"
+      metrics:
+        enabled: true
+
+    controller:
+      metrics:
+        enabled: true
+
+    repoServer:
+      metrics:
+        enabled: true
+    EOT
+  ]
+}
