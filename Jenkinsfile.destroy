@@ -42,7 +42,7 @@ pipeline {
                         # Update kubeconfig so Helm/Kubernetes providers can authenticate
                         aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} || true
                         
-                        terraform init -migrate-state -force-copy -input=false
+                        terraform init -reconfigure -input=false
                         
                         # Attempt graceful Helm destroy; allow pipeline to proceed if EKS API is unresponsive
                         terraform destroy -auto-approve -input=false || echo "Helm uninstall failed/timed out. Proceeding to infrastructure destroy."
@@ -76,7 +76,7 @@ pipeline {
             steps {
                 dir("${env.INFRA_DIR}") {
                     sh '''
-                        terraform init -migrate-state -force-copy -input=false
+                        terraform init -reconfigure -input=false
                         terraform destroy -auto-approve -input=false
                     '''
                 }
