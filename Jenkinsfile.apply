@@ -5,7 +5,6 @@ pipeline {
         terraform 'Terraform'
     }
 
-    // Prevent concurrent runs from conflicting on Terraform state
     options {
         disableConcurrentBuilds()
     }
@@ -41,7 +40,6 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'jenkins-admin-pass', variable: 'JENKINS_ADMIN_PASS')]) {
                     sh '''
-                        # Check if secret already exists in AWS Secrets Manager
                         if aws secretsmanager describe-secret --secret-id "${SECRET_NAME}" > /dev/null 2>&1; then
                             echo "Secret '${SECRET_NAME}' exists. Updating value..."
                             aws secretsmanager put-secret-value \
@@ -61,9 +59,14 @@ pipeline {
         stage('Deploy EKS & Infrastructure (Layer 1)') {
             steps {
                 dir("${env.INFRA_DIR}") {
-                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
-                    sh 'terraform init -reconfigure -input=false'
-                    sh 'terraform apply -auto-approve -input=false'
+                    sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                        BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
+                        
+                        rm -f terraform.tfstate terraform.tfstate.backup
+                        terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
+                        terraform apply -auto-approve -input=false
+                    '''
                 }
             }
         }
@@ -71,14 +74,11 @@ pipeline {
         stage('Pre-Create K8s Namespaces & External Secrets') {
             steps {
                 sh '''
-                    # Update kubeconfig for cluster access
                     aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
 
-                    # Create namespaces if they do not exist
                     kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
                     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
-                    # Substitute environment variables (e.g. ${SECRET_NAME}) and apply K8s manifests
                     for file in ${MANIFESTS_DIR}/*.yaml ${MANIFESTS_DIR}/*.yml; do
                         if [ -f "$file" ]; then
                             envsubst < "$file" | kubectl apply -f -
@@ -91,9 +91,14 @@ pipeline {
         stage('Deploy Helm Services (Layer 2)') {
             steps {
                 dir("${env.SERVICES_DIR}") {
-                    sh 'rm -f terraform.tfstate terraform.tfstate.backup'
-                    sh 'terraform init -reconfigure -input=false'
-                    sh 'terraform apply -auto-approve -input=false'
+                    sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                        BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
+                        
+                        rm -f terraform.tfstate terraform.tfstate.backup
+                        terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
+                        terraform apply -auto-approve -input=false
+                    '''
                 }
             }
         }
@@ -105,16 +110,13 @@ pipeline {
                     echo "  WAITING FOR ARGO CD INITIAL ADMIN SECRET TO GENERATE... "
                     echo "=========================================================="
                     
-                    # Ensure cluster context is active
                     aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
 
-                    # Wait for secret to exist (up to 2 minutes)
                     until kubectl get secret argocd-initial-admin-secret -n argocd > /dev/null 2>&1; do
                         echo "Waiting for argocd-initial-admin-secret to be created..."
                         sleep 5
                     done
 
-                    # Retrieve and print decoded password
                     ARGOCD_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
                     
                     echo "=========================================================="
@@ -131,13 +133,8 @@ pipeline {
 
     post {
         always {
-            // Clean up temporary files or plans across directories
-            dir("${env.INFRA_DIR}") {
-                sh 'rm -f tfplan'
-            }
-            dir("${env.SERVICES_DIR}") {
-                sh 'rm -f tfplan'
-            }
+            dir("${env.INFRA_DIR}") { sh 'rm -f tfplan' }
+            dir("${env.SERVICES_DIR}") { sh 'rm -f tfplan' }
         }
         failure {
             echo 'Terraform Pipeline failed!'
