@@ -97,7 +97,7 @@ pipeline {
                         
                         rm -f terraform.tfstate terraform.tfstate.backup
                         terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
-                        terraform apply -auto-approve -input=false
+                        terraform apply -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false
                     '''
                 }
             }

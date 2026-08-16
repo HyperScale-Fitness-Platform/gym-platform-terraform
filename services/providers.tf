@@ -13,6 +13,7 @@ terraform {
       version = "~> 2.0"
     }
   }
+  
 
   backend "s3" {
     bucket         = "gym-platform-tfstate-bucket"  # Same bucket name
@@ -27,9 +28,9 @@ terraform {
 data "terraform_remote_state" "infra" {
   backend = "s3"
   config = {
-    bucket = "gym-platform-tfstate-bucket"
+    bucket = var.state_bucket_name
     key    = "infrastructure/terraform.tfstate"
-    region = "us-east-1"
+    region = var.aws_region
   }
 }
 
