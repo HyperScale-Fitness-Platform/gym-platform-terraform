@@ -39,13 +39,16 @@ pipeline {
             steps {
                 dir("${env.SERVICES_DIR}") {
                     sh '''
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                        BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
+
                         # Update kubeconfig so Helm/Kubernetes providers can authenticate
                         aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} || true
                         
-                        terraform init -reconfigure -input=false
+                        terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
                         
                         # Attempt graceful Helm destroy; allow pipeline to proceed if EKS API is unresponsive
-                        terraform destroy -auto-approve -input=false || echo "Helm uninstall failed/timed out. Proceeding to infrastructure destroy."
+                        terraform destroy -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false || echo "Helm uninstall failed/timed out. Proceeding to infrastructure destroy."
                     '''
                 }
             }
@@ -76,7 +79,10 @@ pipeline {
             steps {
                 dir("${env.INFRA_DIR}") {
                     sh '''
-                        terraform init -reconfigure -input=false
+                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                        BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
+
+                        terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
                         terraform destroy -auto-approve -input=false
                     '''
                 }
