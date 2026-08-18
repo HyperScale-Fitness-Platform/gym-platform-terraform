@@ -26,11 +26,34 @@ pipeline {
             }
         }
 
-        stage('Delete ECR Images') {
+        stage('Clean Kubernetes Resources & Delete Ingress') {
             steps {
                 sh '''
-                    chmod +x ./scripts/delete-ecr-images.sh
-                    ./scripts/delete-ecr-images.sh
+                    if aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} > /dev/null 2>&1; then
+                        echo "Deleting Kubernetes Ingress objects to trigger ALB cleanup..."
+                        kubectl delete ingress --all --all-namespaces --timeout=60s || true
+
+                        echo "Stripping finalizers from Argo CD applications to prevent deletion blocks..."
+                        kubectl get applications -n argocd -o name 2>/dev/null | xargs -I {} kubectl patch {} -n argocd -p '{"metadata":{"finalizers":null}}' --type=merge || true
+                        kubectl delete applications --all -n argocd --timeout=30s || true
+                        
+                        # Delete target namespaces
+                        kubectl delete namespace gym-dev --ignore-not-found=true --timeout=30s || true
+                        kubectl delete namespace gym-prod --ignore-not-found=true --timeout=30s || true
+                        kubectl delete namespace argocd --ignore-not-found=true --timeout=30s || true
+                        kubectl delete namespace external-secrets --ignore-not-found=true --timeout=30s || true
+                    else
+                        echo "Cluster not reachable. Skipping K8s namespace cleanup."
+                    fi
+                '''
+            }
+        }
+
+        stage('Run Pre-Destroy Cleanup (ALB, ENIs, ECR)') {
+            steps {
+                sh '''
+                    chmod +x ./scripts/pre-destroy.sh
+                    ./scripts/pre-destroy.sh
                 '''
             }
         }
@@ -41,37 +64,11 @@ pipeline {
                     sh '''
                         AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
                         BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
-
-                        # Update kubeconfig so Helm/Kubernetes providers can authenticate
-                        aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} || true
                         
                         terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
-                        
-                        # Attempt graceful Helm destroy; allow pipeline to proceed if EKS API is unresponsive
-                        terraform destroy -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false || echo "Helm uninstall failed/timed out. Proceeding to infrastructure destroy."
+                        terraform destroy -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false || echo "Helm destroy skipped/completed."
                     '''
                 }
-            }
-        }
-
-        stage('Clean Kubernetes Namespaces & Finalizers') {
-            steps {
-                sh '''
-                    if aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${CLUSTER_NAME} > /dev/null 2>&1; then
-                        echo "Cleaning up lingering K8s namespaces and resources..."
-                        
-                        # Strip finalizers from Argo CD applications to prevent deletion blocks
-                        kubectl get applications -n argocd -o name 2>/dev/null | xargs -I {} kubectl patch {} -n argocd -p '{"metadata":{"finalizers":null}}' --type=merge || true
-                        kubectl delete applications --all -n argocd --timeout=30s || true
-                        
-                        # Delete target namespaces
-                        kubectl delete namespace argocd --ignore-not-found=true --timeout=30s || true
-                        kubectl delete namespace jenkins --ignore-not-found=true --timeout=30s || true
-                        kubectl delete namespace external-secrets --ignore-not-found=true --timeout=30s || true
-                    else
-                        echo "Cluster not reachable. Skipping K8s namespace cleanup."
-                    fi
-                '''
             }
         }
 
