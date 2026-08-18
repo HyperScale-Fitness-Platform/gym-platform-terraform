@@ -59,7 +59,7 @@ if [ -n "$TG_ARNS" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 3. Dynamic VPC Discovery & Cleanup (ENIs & Security Groups)
+# 3. Dynamic VPC Discovery & Cleanup
 # ------------------------------------------------------------------
 echo "🧹 Step 3: Checking for lingering VPC resources..."
 
@@ -122,6 +122,30 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "null" ]; then
     done
   else
     echo "     ✓ No non-default Security Groups found."
+  fi
+
+  # C. Delete VPC Endpoints & NAT Gateways
+  echo "  -> Checking VPC Endpoints & NAT Gateways..."
+  ENDPOINTS=$(aws ec2 describe-vpc-endpoints --region "$REGION" \
+    --filters "Name=vpc-id,Values=$VPC_ID" \
+    --query "VpcEndpoints[*].VpcEndpointId" --output text 2>/dev/null || true)
+
+  if [ -n "$ENDPOINTS" ]; then
+    for ep in $ENDPOINTS; do
+      echo "     Deleting VPC Endpoint: $ep..."
+      aws ec2 delete-vpc-endpoints --region "$REGION" --vpc-endpoint-ids "$ep" 2>/dev/null || true
+    done
+  fi
+
+  NAT_GWS=$(aws ec2 describe-nat-gateways --region "$REGION" \
+    --filter "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available,pending" \
+    --query "NatGateways[*].NatGatewayId" --output text 2>/dev/null || true)
+
+  if [ -n "$NAT_GWS" ]; then
+    for nat in $NAT_GWS; do
+      echo "     Deleting NAT Gateway: $nat..."
+      aws ec2 delete-nat-gateway --region "$REGION" --nat-gateway-id "$nat" 2>/dev/null || true
+    done
   fi
 else
   echo "  ✓ No target VPC found or already deleted."
