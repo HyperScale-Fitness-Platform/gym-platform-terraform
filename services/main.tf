@@ -64,3 +64,49 @@ resource "helm_release" "argocd" {
     EOT
   ]
 }
+
+
+resource "helm_release" "argocd_image_updater" {
+  name             = "argocd-image-updater"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argocd-image-updater"
+  namespace        = "argocd"
+  create_namespace = false
+  # false because "argocd" namespace already exists from the argocd
+  # helm_release above — depends_on below ensures ordering anyway.
+
+  timeout = 300
+
+  values = [
+    <<-EOT
+    serviceAccount:
+      create: true
+      name: argocd-image-updater
+      annotations:
+        eks.amazonaws.com/role-arn: "${aws_iam_role.image_updater.arn}"
+        # This annotation is the actual IRSA wiring — it's what lets
+        # THIS pod assume the IAM role with ECR read permissions,
+        # without needing any static AWS credentials baked in.
+
+    config:
+      registries:
+        - name: ECR
+          api_url: https://${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
+          prefix: ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com
+          ping: yes
+          credentials: ext:/scripts/ecr-login.sh
+          # Image Updater ships a helper script for ECR auth using the
+          # AWS SDK's default credential chain — which resolves via the
+          # IRSA role above automatically, no static keys needed.
+
+    authScripts:
+      enabled: true
+      scripts:
+        ecr-login.sh: |
+          #!/bin/sh
+          aws ecr get-login-password --region ${var.aws_region}
+    EOT
+  ]
+
+  depends_on = [helm_release.argocd]
+}

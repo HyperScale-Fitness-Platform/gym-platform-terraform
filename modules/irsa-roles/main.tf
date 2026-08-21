@@ -133,3 +133,58 @@ module "ebs_csi_irsa_role" {
     }
   }
 }
+
+
+# ============================================================
+# ArgoCD Image Updater — IAM role + policy
+# ============================================================
+resource "aws_iam_policy" "image_updater" {
+  name = "${var.cluster_name}-image-updater-policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchGetImage",
+        "ecr:DescribeImages",
+        "ecr:GetDownloadUrlForLayer"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
+data "aws_iam_policy_document" "image_updater_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_url_cleaned}:sub"
+      values   = ["system:serviceaccount:argocd:argocd-image-updater"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_url_cleaned}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "image_updater" {
+  name               = "${var.cluster_name}-image-updater-role"
+  assume_role_policy = data.aws_iam_policy_document.image_updater_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "image_updater" {
+  role       = aws_iam_role.image_updater.name
+  policy_arn = aws_iam_policy.image_updater.arn
+}

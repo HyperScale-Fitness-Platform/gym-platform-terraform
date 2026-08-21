@@ -53,6 +53,23 @@ pipeline {
                         fi
                     '''
                 }
+                withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GH_USER', passwordVariable: 'GH_PAT')]) {
+                    sh '''
+                        SECRET_NAME_GITHUB="gitops/image-updater/github-creds"
+
+                        if aws secretsmanager describe-secret --secret-id "${SECRET_NAME_GITHUB}" > /dev/null 2>&1; then
+                            echo "Secret '${SECRET_NAME_GITHUB}' exists. Updating value..."
+                            aws secretsmanager put-secret-value \
+                                --secret-id "${SECRET_NAME_GITHUB}" \
+                                --secret-string "{\\"username\\":\\"${GH_USER}\\",\\"password\\":\\"${GH_PAT}\\"}"
+                        else
+                            echo "Secret '${SECRET_NAME_GITHUB}' does not exist. Creating..."
+                            aws secretsmanager create-secret \
+                                --name "${SECRET_NAME_GITHUB}" \
+                                --secret-string "{\\"username\\":\\"${GH_USER}\\",\\"password\\":\\"${GH_PAT}\\"}"
+                        fi
+                    '''
+                }
             }
         }
 
