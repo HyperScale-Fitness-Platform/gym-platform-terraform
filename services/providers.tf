@@ -38,6 +38,8 @@ provider "aws" {
   region = var.aws_region
 }
 
+data "aws_caller_identity" "current" {}
+
 # Configures Kubernetes provider dynamically using Layer 1 remote state outputs
 provider "kubernetes" {
   host                   = data.terraform_remote_state.infra.outputs.cluster_endpoint
