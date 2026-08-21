@@ -120,28 +120,46 @@ pipeline {
             }
         }
 
-        stage('Fetch Argo CD Admin Password') {
+        stage('Fetch & Display Access Credentials') {
             steps {
                 sh '''
                     echo "=========================================================="
-                    echo "  WAITING FOR ARGO CD INITIAL ADMIN SECRET TO GENERATE... "
+                    echo "  CONFIGURING KUBECONFIG & WAITING FOR SERVICES...        "
                     echo "=========================================================="
                     
                     aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
 
+                    # 1. Fetch Argo CD Credentials
+                    echo "Fetching Argo CD initial admin secret..."
                     until kubectl get secret argocd-initial-admin-secret -n argocd > /dev/null 2>&1; do
-                        echo "Waiting for argocd-initial-admin-secret to be created..."
+                        echo "Waiting for argocd-initial-admin-secret..."
                         sleep 5
                     done
-
                     ARGOCD_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-                    
+
+                    # 2. Fetch Jenkins Credentials
+                    echo "Fetching Jenkins admin secret..."
+                    until kubectl get secret jenkins-admin-credentials -n jenkins > /dev/null 2>&1; do
+                        echo "Waiting for jenkins-admin-credentials..."
+                        sleep 5
+                    done
+                    JENKINS_PASS=$(kubectl -n jenkins get secret jenkins-admin-credentials -o jsonpath="{.data.jenkins-admin-password}" | base64 -d)
+
+                    echo ""
                     echo "=========================================================="
-                    echo "  ARGO CD ACCESS CREDENTIALS"
+                    echo "                  ACCESS CREDENTIALS                      "
                     echo "=========================================================="
-                    echo "  URL:      https://localhost:8081 (via kubectl port-forward)"
-                    echo "  Username: admin"
-                    echo "  Password: ${ARGOCD_PASS}"
+                    echo "  [1] ARGO CD"
+                    echo "      Port-Forward:  kubectl port-forward svc/argocd-server -n argocd 8081:443"
+                    echo "      URL:           https://localhost:8081"
+                    echo "      Username:      admin"
+                    echo "      Password:      ${ARGOCD_PASS}"
+                    echo "----------------------------------------------------------"
+                    echo "  [2] JENKINS"
+                    echo "      Port-Forward:  kubectl port-forward svc/jenkins -n jenkins 8080:8080"
+                    echo "      URL:           http://localhost:8080"
+                    echo "      Username:      admin"
+                    echo "      Password:      ${JENKINS_PASS}"
                     echo "=========================================================="
                 '''
             }
