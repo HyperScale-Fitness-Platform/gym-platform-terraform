@@ -54,18 +54,18 @@ pipeline {
                         mv kubectl "${TOOL_BIN}/"
                     fi
 
-                    # 3. Install envsubst (via static binary) if missing
+                    # 3. Install envsubst if missing
                     if ! command -v envsubst >/dev/null 2>&1; then
                         echo "Installing envsubst..."
                         curl -sL https://github.com/a8m/envsubst/releases/download/v1.2.0/envsubst-`uname -s`-`uname -m` -o "${TOOL_BIN}/envsubst"
                         chmod +x "${TOOL_BIN}/envsubst"
                     fi
 
-                    # Verification
-                    echo "--- Tool Versions ---"
+                    # Verification (avoid -v on Go binary)
+                    echo "--- Tool Versions & Checks ---"
                     aws --version
                     kubectl version --client
-                    envsubst -v
+                    echo "envsubst available at: $(which envsubst)"
                 '''
             }
         }
