@@ -1,8 +1,9 @@
 pipeline {
-    agent any
-
-    tools {
-        terraform 'Terraform'
+    agent {
+        docker {
+            image 'alpine/k8s:1.29.2'
+            args  '-u 0:0'
+        }
     }
 
     options {
