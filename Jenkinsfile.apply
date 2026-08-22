@@ -211,8 +211,14 @@ pipeline {
 
     post {
         always {
-            dir("${env.INFRA_DIR}") { sh 'rm -f tfplan' }
-            dir("${env.SERVICES_DIR}") { sh 'rm -f tfplan' }
+            node('') {
+                dir("${env.INFRA_DIR}") {
+                    sh 'rm -f tfplan'
+                }
+                dir("${env.SERVICES_DIR}") {
+                    sh 'rm -f tfplan'
+                }
+            }
         }
         failure {
             echo 'Terraform Pipeline failed!'
