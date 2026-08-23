@@ -14,6 +14,8 @@ pipeline {
         AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         AWS_DEFAULT_REGION    = 'us-east-1'
 
+        LETSENCRYPT_EMAIL     = 'mustafatarek104@gmail.com'
+
         SECRET_NAME           = 'eks/jenkins/admin-password'
         INFRA_DIR             = './infrastructure'
         SERVICES_DIR          = './services'
@@ -61,7 +63,6 @@ pipeline {
                         chmod +x "${TOOL_BIN}/envsubst"
                     fi
 
-                    # Verification (avoid -v on Go binary)
                     echo "--- Tool Versions & Checks ---"
                     aws --version
                     kubectl version --client
@@ -131,19 +132,19 @@ pipeline {
             }
         }
 
-        stage('Pre-Create K8s Namespaces & External Secrets') {
+        stage('Pre-Create K8s Namespaces & Secrets') {
             steps {
                 sh '''
                     aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
 
                     kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
                     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+                    kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
 
-                    for file in ${MANIFESTS_DIR}/*.yaml ${MANIFESTS_DIR}/*.yml; do
-                        if [ -f "$file" ]; then
-                            envsubst < "$file" | kubectl apply -f -
-                        fi
-                    done
+                    # Apply Secrets & SecretStores needed by Helm charts
+                    [ -f "${MANIFESTS_DIR}/cluster-secret-store.yaml" ] && envsubst < "${MANIFESTS_DIR}/cluster-secret-store.yaml" | kubectl apply -f -
+                    [ -f "${MANIFESTS_DIR}/jenkins-secret.yaml" ] && envsubst < "${MANIFESTS_DIR}/jenkins-secret.yaml" | kubectl apply -f -
+                    [ -f "${MANIFESTS_DIR}/github-secret.yaml" ] && envsubst < "${MANIFESTS_DIR}/github-secret.yaml" | kubectl apply -f -
                 '''
             }
         }
@@ -160,6 +161,25 @@ pipeline {
                         terraform apply -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false
                     '''
                 }
+            }
+        }
+
+        stage('Configure Post-Helm Resources (ClusterIssuer)') {
+            steps {
+                sh '''
+                    aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
+
+                    echo "Waiting for cert-manager CRD and webhook to be ready..."
+                    kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=120s
+                    kubectl wait --for=condition=Available deployment/cert-manager-webhook -n cert-manager --timeout=120s
+
+                    # Apply Let's Encrypt ClusterIssuer with email substitution
+                    export email="${LETSENCRYPT_EMAIL}"
+                    if [ -f "${MANIFESTS_DIR}/letsencrypt-issuer.yaml" ]; then
+                        echo "Applying ClusterIssuer for Let's Encrypt (${email})..."
+                        envsubst < "${MANIFESTS_DIR}/letsencrypt-issuer.yaml" | kubectl apply -f -
+                    fi
+                '''
             }
         }
 

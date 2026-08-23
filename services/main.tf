@@ -4,10 +4,7 @@ resource "helm_release" "jenkins" {
   chart            = "jenkins"
   namespace        = "jenkins"
   create_namespace = true
-
-  # cleanup_on_fail = true
-  # atomic          = true
-  timeout         = 600
+  timeout          = 600
 
   values = [
     <<-EOT
@@ -65,7 +62,6 @@ resource "helm_release" "argocd" {
   ]
 }
 
-
 resource "helm_release" "argocd_image_updater" {
   name             = "argocd-image-updater"
   repository       = "https://argoproj.github.io/argo-helm"
@@ -95,9 +91,24 @@ resource "helm_release" "argocd_image_updater" {
       scripts:
         ecr-login.sh: |
           #!/bin/sh
-          aws ecr get-login-password --region ${var.aws_region}
+          export HOME=/tmp
+          TOKEN=$(aws ecr get-login-password --region ${var.aws_region})
+          echo "AWS:$TOKEN"
     EOT
   ]
 
   depends_on = [helm_release.argocd]
+}
+
+resource "helm_release" "cert_manager" {
+  name             = "cert-manager"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+
+  set {
+    name  = "crds.enabled"
+    value = "true"
+  }
 }
