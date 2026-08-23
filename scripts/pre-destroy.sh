@@ -1,14 +1,28 @@
 #!/usr/bin/env bash
 
-# Do NOT use set -e blindly when cleaning up dynamic AWS resources
-# We want the cleanup to attempt all deletions even if one fails
 set -u
 
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 ENV_NAME="${1:-dev}"
+CLUSTER_NAME="gym-cluster"
 ECR_REPOS=("gym-api-gateway" "gym-auth-service")
 
 echo "🚀 Starting Pre-Destroy Cleanup Script for environment: [${ENV_NAME}] in [${REGION}]..."
+
+# ------------------------------------------------------------------
+# 0. Gracefully Delete Kubernetes Ingress & LoadBalancer Services
+# ------------------------------------------------------------------
+echo "☸️  Step 0: Checking for live EKS cluster to delete Ingresses..."
+if aws eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME" >/dev/null 2>&1; then
+  echo "  -> Connected to cluster $CLUSTER_NAME. Deleting ingress resources..."
+  aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
+  kubectl delete ingress --all --all-namespaces --timeout=60s >/dev/null 2>&1 || true
+  kubectl delete svc --all --all-namespaces --field-selector spec.type=LoadBalancer --timeout=60s >/dev/null 2>&1 || true
+  echo "     ✓ Ingress resources cleaned from cluster."
+  sleep 10
+else
+  echo "     ✓ Cluster not found or already deleted. Proceeding with AWS API cleanup."
+fi
 
 # ------------------------------------------------------------------
 # 1. Purge ECR Images
@@ -32,7 +46,7 @@ done
 # ------------------------------------------------------------------
 echo "🌐 Step 2: Cleaning up Application Load Balancers..."
 ALB_ARNS=$(aws elbv2 describe-load-balancers --region "$REGION" \
-  --query "LoadBalancers[?contains(LoadBalancerName, 'gym') || contains(LoadBalancerName, 'apigatew')].LoadBalancerArn" \
+  --query "LoadBalancers[?contains(LoadBalancerName, 'gym') || contains(LoadBalancerName, 'apigatew') || contains(LoadBalancerName, 'k8s-')].LoadBalancerArn" \
   --output text 2>/dev/null || true)
 
 if [ -n "$ALB_ARNS" ]; then
@@ -40,15 +54,15 @@ if [ -n "$ALB_ARNS" ]; then
     echo "  -> Deleting Load Balancer: $alb_arn"
     aws elbv2 delete-load-balancer --load-balancer-arn "$alb_arn" --region "$REGION" 2>/dev/null || true
   done
-  echo "     Waiting 45 seconds for ALB ENIs to enter detaching state..."
-  sleep 45
+  echo "     Waiting 30 seconds for ALB ENIs to release..."
+  sleep 30
 else
   echo "     ✓ No active ALBs found."
 fi
 
 # Clean Target Groups
 TG_ARNS=$(aws elbv2 describe-target-groups --region "$REGION" \
-  --query "TargetGroups[?contains(TargetGroupName, 'gym') || contains(TargetGroupName, 'api-gateway')].TargetGroupArn" \
+  --query "TargetGroups[?contains(TargetGroupName, 'gym') || contains(TargetGroupName, 'api-gateway') || contains(TargetGroupName, 'k8s-')].TargetGroupArn" \
   --output text 2>/dev/null || true)
 
 if [ -n "$TG_ARNS" ]; then
@@ -59,7 +73,7 @@ if [ -n "$TG_ARNS" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 3. Dynamic VPC Discovery & Cleanup
+# 3. Dynamic VPC Discovery & Thorough ENI Cleanup
 # ------------------------------------------------------------------
 echo "🧹 Step 3: Checking for lingering VPC resources..."
 
@@ -67,7 +81,6 @@ VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" \
   --filters "Name=tag:Project,Values=gym-platform" "Name=tag:Environment,Values=${ENV_NAME}" \
   --query "Vpcs[0].VpcId" --output text 2>/dev/null || true)
 
-# Fallback VPC search by tag Name if Project tag is not found
 if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ] || [ "$VPC_ID" = "null" ]; then
   VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" \
     --filters "Name=tag:Name,Values=*gym-vpc-${ENV_NAME}*" \
@@ -77,8 +90,8 @@ fi
 if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "null" ]; then
   echo "  -> Target VPC identified: $VPC_ID"
 
-  # A. Detach and Delete Lingering Network Interfaces (ENIs)
-  echo "  -> Cleaning lingering ENIs..."
+  # A. Force Detach and Delete ALL Lingering ENIs (Including K8s Pod CNI interfaces)
+  echo "  -> Purging lingering ENIs in VPC $VPC_ID..."
   ENIS=$(aws ec2 describe-network-interfaces --region "$REGION" \
     --filters "Name=vpc-id,Values=$VPC_ID" \
     --query "NetworkInterfaces[*].NetworkInterfaceId" --output text 2>/dev/null || true)
@@ -90,7 +103,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "null" ]; then
         --query "NetworkInterfaces[0].Attachment.AttachmentId" --output text 2>/dev/null || true)
 
       if [ -n "$ATTACH_ID" ] && [ "$ATTACH_ID" != "None" ] && [ "$ATTACH_ID" != "null" ]; then
-        echo "     Detaching ENI: $eni (Attachment: $ATTACH_ID)..."
+        echo "     Force detaching ENI: $eni..."
         aws ec2 detach-network-interface --region "$REGION" --attachment-id "$ATTACH_ID" --force 2>/dev/null || true
         sleep 2
       fi
@@ -98,6 +111,7 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "null" ]; then
       echo "     Deleting ENI: $eni..."
       aws ec2 delete-network-interface --region "$REGION" --network-interface-id "$eni" 2>/dev/null || true
     done
+    echo "     ✓ ENI cleanup pass completed."
   else
     echo "     ✓ No dangling ENIs found."
   fi
@@ -109,19 +123,15 @@ if [ -n "$VPC_ID" ] && [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "null" ]; then
     --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null || true)
 
   if [ -n "$SGS" ]; then
-    # Pass 1: Revoke all rules to avoid circular dependency locks
     for sg in $SGS; do
       aws ec2 revoke-security-group-ingress --region "$REGION" --group-id "$sg" --protocol all --cidr 0.0.0.0/0 2>/dev/null || true
       aws ec2 revoke-security-group-egress --region "$REGION" --group-id "$sg" --protocol all --cidr 0.0.0.0/0 2>/dev/null || true
     done
 
-    # Pass 2: Delete the security groups
     for sg in $SGS; do
       echo "     Deleting Security Group: $sg..."
       aws ec2 delete-security-group --region "$REGION" --group-id "$sg" 2>/dev/null || true
     done
-  else
-    echo "     ✓ No non-default Security Groups found."
   fi
 
   # C. Delete VPC Endpoints & NAT Gateways
