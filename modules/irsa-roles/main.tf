@@ -134,7 +134,6 @@ module "ebs_csi_irsa_role" {
   }
 }
 
-
 # ============================================================
 # ArgoCD Image Updater — IAM role + policy
 # ============================================================
@@ -146,9 +145,12 @@ resource "aws_iam_policy" "image_updater" {
       Effect = "Allow"
       Action = [
         "ecr:GetAuthorizationToken",
-        "ecr:BatchGetImage",
+        "ecr:ListImages",
         "ecr:DescribeImages",
-        "ecr:GetDownloadUrlForLayer"
+        "ecr:DescribeRepositories",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchCheckLayerAvailability"
       ]
       Resource = "*"
     }]
