@@ -190,3 +190,63 @@ resource "aws_iam_role_policy_attachment" "image_updater" {
   role       = aws_iam_role.image_updater.name
   policy_arn = aws_iam_policy.image_updater.arn
 }
+
+
+
+# ============================================================
+# API Gateway — S3 access (presigned upload URLs for product images)
+# ============================================================
+
+resource "aws_iam_policy" "gateway_s3" {
+  name = "${var.cluster_name}-gateway-s3-policy"
+
+  # Only PutObject — the gateway signs upload URLs, it never needs to read,
+  # list, or delete objects itself (reads are public on the bucket already).
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${var.product_images_bucket_arn}/*"
+      }
+    ]
+  })
+}
+
+# StringLike + wildcard namespace (gym-dev / gym-prod) rather than
+# StringEquals to one namespace — the gateway's ServiceAccount is named
+# "api-gateway" in both, same as every other per-service overlay in gitops.
+data "aws_iam_policy_document" "gateway_s3_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringLike"
+      variable = "${local.oidc_url_cleaned}:sub"
+      values   = ["system:serviceaccount:gym-*:api-gateway"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_url_cleaned}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "gateway_s3" {
+  name               = "${var.cluster_name}-gateway-s3-role"
+  assume_role_policy = data.aws_iam_policy_document.gateway_s3_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "gateway_s3" {
+  role       = aws_iam_role.gateway_s3.name
+  policy_arn = aws_iam_policy.gateway_s3.arn
+}
