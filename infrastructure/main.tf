@@ -21,6 +21,7 @@ module "ecr" {
     "gym-order-service",
     "gym-profile-service",
     "gym-frontend",
+    "gym-operations-service"
   ]
 }
 
