@@ -17,5 +17,6 @@ module "ecr" {
   repository_names = [
     "gym-api-gateway",
     "gym-auth-service",
+    "gym-operations-service"
   ]
 }
