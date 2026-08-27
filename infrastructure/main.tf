@@ -37,5 +37,13 @@ module "product_images_bucket" {
   allowed_origins = ["http://localhost:3080"] # add the prod frontend URL once it exists
 }
 
+module "irsa_roles" {
+  source = "../modules/irsa-roles"
+
+  cluster_name            = module.eks.cluster_name
+  oidc_provider_arn       = module.eks.oidc_provider_arn
+  oidc_provider_url       = module.eks.oidc_provider_url
+  product_images_bucket_arn = module.product_images_bucket.bucket_arn
+}
 
 
