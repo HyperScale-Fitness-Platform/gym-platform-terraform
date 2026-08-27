@@ -123,20 +123,20 @@ resource "helm_release" "cert_manager_webhook_duckdns" {
 
   set = [
     {
+      name  = "groupName"
+      value = "acme.iti-gym-platform.duckdns.org"
+    },
+    {
       name  = "token.value"
       value = var.duckdns_token
     },
     {
-      name  = "clusterIssuer.email"
-      value = var.acme_email
-    },
-    {
       name  = "clusterIssuer.production.create"
-      value = "true"
+      value = "false"
     },
     {
       name  = "clusterIssuer.staging.create"
-      value = "true"
+      value = "false"
     }
   ]
 

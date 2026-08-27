@@ -27,8 +27,3 @@ variable "duckdns_token" {
   type        = string
   sensitive   = true
 }
-
-variable "acme_email" {
-  description = "Email for Let's Encrypt registration"
-  type        = string
-}

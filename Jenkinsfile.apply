@@ -184,14 +184,13 @@ pipeline {
                             terraform apply -auto-approve \
                                 -var="state_bucket_name=${BUCKET_NAME}" \
                                 -var="duckdns_token=${DUCKDNS_TOKEN}" \
-                                -var="acme_email=${LETSENCRYPT_EMAIL}" \
                                 -input=false
                         '''
                     }
                 }
             }
         }
-        
+
         stage('Configure Post-Helm Resources (ClusterIssuer)') {
             steps {
                 sh '''
@@ -207,7 +206,13 @@ pipeline {
                         sleep 5
                     done
 
-                    # Apply Let's Encrypt ClusterIssuer with email substitution
+                    # 1. Apply DuckDNS Webhook RBAC solver permissions
+                    if [ -f "${MANIFESTS_DIR}/cert-manager-duckdns-rbac.yaml" ]; then
+                        echo "Applying cert-manager DuckDNS RBAC permissions..."
+                        kubectl apply -f "${MANIFESTS_DIR}/cert-manager-duckdns-rbac.yaml"
+                    fi
+
+                    # 2. Apply Let's Encrypt ClusterIssuer with email substitution
                     export email="${LETSENCRYPT_EMAIL}"
                     if [ -f "${MANIFESTS_DIR}/letsencrypt-issuer.yaml" ]; then
                         echo "Applying ClusterIssuer for Let's Encrypt (${email})..."
