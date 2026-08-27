@@ -1,6 +1,3 @@
-# NOTE: module "irsa_roles" is declared in main.tf (it needs
-# product_images_bucket_arn from module.product_images_bucket). Do not
-# redeclare it here.
 
 module "helm_addons" {
   source                    = "../modules/helm-addons"
