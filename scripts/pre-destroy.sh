@@ -5,7 +5,11 @@ set -u
 REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 ENV_NAME="${1:-dev}"
 CLUSTER_NAME="gym-cluster"
-ECR_REPOS=("gym-api-gateway" "gym-auth-service")
+
+# Discover every repository dynamically so this never drifts from the
+# infrastructure/main.tf ECR module list.
+read -r -a ECR_REPOS <<< "$(aws ecr describe-repositories --region "$REGION" \
+  --query 'repositories[].repositoryName' --output text 2>/dev/null || true)"
 
 echo "🚀 Starting Pre-Destroy Cleanup Script for environment: [${ENV_NAME}] in [${REGION}]..."
 

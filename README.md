@@ -190,7 +190,15 @@ If you prefer to deploy manually without Jenkins:
    terraform apply
    ```
 
-7. Retrieve Argo CD credentials:
+7. Seed application secrets (once) — creates the `gym/dev/*` entries that the
+   gym-platform-gitops ExternalSecrets read. Must run before the gitops
+   orchestrator syncs the ArgoCD root-app. Idempotent (never overwrites):
+   ```bash
+   # optionally export STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / AUTH_JWT_SECRET first
+   ./scripts/seed-app-secrets.sh
+   ```
+
+8. Retrieve Argo CD credentials:
    ```bash
    kubectl get secret -n argocd argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
    ```
