@@ -8,7 +8,7 @@ module "eks" {
   vpc_id     = var.vpc_id
   subnet_ids = concat(var.private_subnets, var.public_subnets)
 
-  cluster_endpoint_public_access = true
+  cluster_endpoint_public_access           = true
   enable_cluster_creator_admin_permissions = true
 
   # IAM Roles for Service Accounts. It sets up an OpenID Connect (OIDC) identity provider.
@@ -30,8 +30,9 @@ module "eks" {
   }
 
   cluster_addons = {
-    vpc-cni    = {}
-    coredns    = {}
-    kube-proxy = {}
+    vpc-cni                = {}
+    coredns                = {}
+    kube-proxy             = {}
+    eks-pod-identity-agent = {}
   }
 }
