@@ -17,11 +17,15 @@ module "ecr" {
   repository_names = [
     "gym-api-gateway",
     "gym-auth-service",
+    "gym-profile-service",
+    "gym-progress-service",
     "gym-catalog-service",
     "gym-order-service",
-    "gym-profile-service",
-    "gym-frontend",
-    "gym-operations-service"
+    "gym-payment-service",
+    "gym-operations-service",
+    "gym-social-service",
+    "gym-ai-service",
+    "frontend-service"
   ]
 }
 
