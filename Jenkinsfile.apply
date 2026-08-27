@@ -174,18 +174,24 @@ pipeline {
         stage('Deploy Helm Services (Layer 2)') {
             steps {
                 dir("${env.SERVICES_DIR}") {
-                    sh '''
-                        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-                        BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
-                        
-                        rm -f terraform.tfstate terraform.tfstate.backup
-                        terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
-                        terraform apply -auto-approve -var="state_bucket_name=${BUCKET_NAME}" -input=false
-                    '''
+                    withCredentials([string(credentialsId: 'duckdns-token', variable: 'DUCKDNS_TOKEN')]) {
+                        sh '''
+                            AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+                            BUCKET_NAME="gym-platform-tfstate-${AWS_ACCOUNT_ID}"
+                            
+                            rm -f terraform.tfstate terraform.tfstate.backup
+                            terraform init -reconfigure -backend-config="bucket=${BUCKET_NAME}" -input=false
+                            terraform apply -auto-approve \
+                                -var="state_bucket_name=${BUCKET_NAME}" \
+                                -var="duckdns_token=${DUCKDNS_TOKEN}" \
+                                -var="acme_email=${LETSENCRYPT_EMAIL}" \
+                                -input=false
+                        '''
+                    }
                 }
             }
         }
-
+        
         stage('Configure Post-Helm Resources (ClusterIssuer)') {
             steps {
                 sh '''

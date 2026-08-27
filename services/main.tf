@@ -116,16 +116,29 @@ resource "helm_release" "cert_manager" {
 }
 
 resource "helm_release" "cert_manager_webhook_duckdns" {
-  name       = "cert-manager-webhook-duckdns"
-  repository = "https://ebrianne.github.io/helm-charts"
-  chart      = "cert-manager-webhook-duckdns"
-  version    = "1.2.4"
+  name       = "cert-manager-duckdns-webhook"
+  repository = "https://csp33.github.io/cert-manager-duckdns-webhook"
+  chart      = "cert-manager-duckdns-webhook"
   namespace  = "cert-manager"
 
-  set = [{
-    name  = "groupName"
-    value = "acme.iti-gym-platform.duckdns.org"
-  }]
+  set = [
+    {
+      name  = "token.value"
+      value = var.duckdns_token
+    },
+    {
+      name  = "clusterIssuer.email"
+      value = var.acme_email
+    },
+    {
+      name  = "clusterIssuer.production.create"
+      value = "true"
+    },
+    {
+      name  = "clusterIssuer.staging.create"
+      value = "true"
+    }
+  ]
 
   depends_on = [helm_release.cert_manager]
 }

@@ -21,3 +21,14 @@ variable "infra_state_path" {
   type        = string
   default     = "../infrastructure/terraform.tfstate"
 }
+
+variable "duckdns_token" {
+  description = "DuckDNS API Token"
+  type        = string
+  sensitive   = true
+}
+
+variable "acme_email" {
+  description = "Email for Let's Encrypt registration"
+  type        = string
+}
