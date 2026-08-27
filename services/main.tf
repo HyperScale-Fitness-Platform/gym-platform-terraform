@@ -116,10 +116,9 @@ resource "helm_release" "cert_manager" {
 }
 
 resource "helm_release" "cert_manager_webhook_duckdns" {
-  name       = "cert-manager-webhook-duckdns"
-  repository = "https://ebrianne.github.io/duckdns-webhook"
-  chart      = "duckdns-webhook"
-  namespace  = "cert-manager"
+  name      = "cert-manager-webhook-duckdns"
+  chart     = "https://github.com/ebrianne/cert-manager-webhook-duckdns/releases/download/v1.2.4/cert-manager-webhook-duckdns-1.2.4.tgz"
+  namespace = "cert-manager"
 
   set = [{
     name  = "groupName"
