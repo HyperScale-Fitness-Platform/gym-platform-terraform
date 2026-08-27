@@ -214,29 +214,18 @@ resource "aws_iam_policy" "gateway_s3" {
   })
 }
 
-# StringLike + wildcard namespace (gym-dev / gym-prod) rather than
-# StringEquals to one namespace — the gateway's ServiceAccount is named
-# "api-gateway" in both, same as every other per-service overlay in gitops.
+# api-gateway assumes this role via EKS Pod Identity, not IRSA/OIDC — so the
+# ServiceAccount manifest in gitops needs NO account-specific annotation. The
+# namespace + ServiceAccount binding is the aws_eks_pod_identity_association
+# below; the trust policy just allows the Pod Identity service principal.
 data "aws_iam_policy_document" "gateway_s3_trust" {
   statement {
     effect  = "Allow"
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+    actions = ["sts:AssumeRole", "sts:TagSession"]
 
     principals {
-      type        = "Federated"
-      identifiers = [var.oidc_provider_arn]
-    }
-
-    condition {
-      test     = "StringLike"
-      variable = "${local.oidc_url_cleaned}:sub"
-      values   = ["system:serviceaccount:gym-*:api-gateway"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${local.oidc_url_cleaned}:aud"
-      values   = ["sts.amazonaws.com"]
+      type        = "Service"
+      identifiers = ["pods.eks.amazonaws.com"]
     }
   }
 }
@@ -249,4 +238,16 @@ resource "aws_iam_role" "gateway_s3" {
 resource "aws_iam_role_policy_attachment" "gateway_s3" {
   role       = aws_iam_role.gateway_s3.name
   policy_arn = aws_iam_policy.gateway_s3.arn
+}
+
+# Bind the role to the "api-gateway" ServiceAccount in each target namespace.
+# These are metadata-only on the AWS side, so the namespace / SA do not have to
+# exist yet (the gitops orchestrator creates them later).
+resource "aws_eks_pod_identity_association" "gateway_s3" {
+  for_each = toset(["gym-dev", "gym-prod"])
+
+  cluster_name    = var.cluster_name
+  namespace       = each.value
+  service_account = "api-gateway"
+  role_arn        = aws_iam_role.gateway_s3.arn
 }
