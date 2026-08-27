@@ -33,7 +33,7 @@ module "ecr" {
 
 module "product_images_bucket" {
   source          = "../modules/s3"
-  bucket_name     = "gym-platform-product-images"
+  bucket_name     = "gym-platform-product-images-stg" # env/staging: S3 names are global; suffix keeps it distinct from the primary env
   allowed_origins = ["http://localhost:3080"] # add the prod frontend URL once it exists
 }
 
