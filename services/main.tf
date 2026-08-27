@@ -76,7 +76,7 @@ resource "helm_release" "argocd_image_updater" {
       create: true
       name: argocd-image-updater
       annotations:
-        eks.amazonaws.com/role-arn: "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${data.terraform_remote_state.infra.outputs.cluster_name}-image-updater-role"
+        eks.amazonaws.com/role-arn: "${data.terraform_remote_state.infra.outputs.image_updater_iam_role_arn}"
 
     config:
       registries:
@@ -113,4 +113,18 @@ resource "helm_release" "cert_manager" {
       value = "true"
     }
   ]
+}
+
+resource "helm_release" "cert_manager_webhook_duckdns" {
+  name       = "cert-manager-webhook-duckdns"
+  repository = "https://ebrianne.github.io/cert-manager-webhook-duckdns"
+  chart      = "cert-manager-webhook-duckdns"
+  namespace  = "cert-manager"
+
+  set = [{
+    name  = "groupName"
+    value = "acme.iti-gym-platform.duckdns.org"
+  }]
+
+  depends_on = [helm_release.cert_manager]
 }

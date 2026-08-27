@@ -17,6 +17,7 @@ pipeline {
         LETSENCRYPT_EMAIL     = 'mustafatarek104@gmail.com'
 
         SECRET_NAME           = 'eks/jenkins/admin-password'
+        SECRET_NAME_DUCKDNS   = 'eks/cert-manager/duckdns-token'
         INFRA_DIR             = './infrastructure'
         SERVICES_DIR          = './services'
         MANIFESTS_DIR         = './k8s'
@@ -114,6 +115,21 @@ pipeline {
                         fi
                     '''
                 }
+                withCredentials([string(credentialsId: 'duckdns-token', variable: 'DUCKDNS_TOKEN')]) {
+                    sh '''
+                        if aws secretsmanager describe-secret --secret-id "${SECRET_NAME_DUCKDNS}" > /dev/null 2>&1; then
+                            echo "Secret '${SECRET_NAME_DUCKDNS}' exists. Updating value..."
+                            aws secretsmanager put-secret-value \
+                                --secret-id "${SECRET_NAME_DUCKDNS}" \
+                                --secret-string "${DUCKDNS_TOKEN}"
+                        else
+                            echo "Secret '${SECRET_NAME_DUCKDNS}' does not exist. Creating..."
+                            aws secretsmanager create-secret \
+                                --name "${SECRET_NAME_DUCKDNS}" \
+                                --secret-string "${DUCKDNS_TOKEN}"
+                        fi
+                    '''
+                }
             }
         }
 
@@ -140,11 +156,17 @@ pipeline {
                     kubectl create namespace jenkins --dry-run=client -o yaml | kubectl apply -f -
                     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
                     kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
+                    kubectl create namespace cert-manager --dry-run=client -o yaml | kubectl apply -f -
+
+                    # Export variables for envsubst
+                    export SECRET_NAME="${SECRET_NAME}"
+                    export SECRET_NAME_DUCKDNS="${SECRET_NAME_DUCKDNS}"
 
                     # Apply Secrets & SecretStores needed by Helm charts
                     [ -f "${MANIFESTS_DIR}/cluster-secret-store.yaml" ] && envsubst < "${MANIFESTS_DIR}/cluster-secret-store.yaml" | kubectl apply -f -
                     [ -f "${MANIFESTS_DIR}/jenkins-secret.yaml" ] && envsubst < "${MANIFESTS_DIR}/jenkins-secret.yaml" | kubectl apply -f -
                     [ -f "${MANIFESTS_DIR}/github-secret.yaml" ] && envsubst < "${MANIFESTS_DIR}/github-secret.yaml" | kubectl apply -f -
+                    [ -f "${MANIFESTS_DIR}/duckdns-secret.yaml" ] && envsubst < "${MANIFESTS_DIR}/duckdns-secret.yaml" | kubectl apply -f -
                 '''
             }
         }
@@ -169,9 +191,15 @@ pipeline {
                 sh '''
                     aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name gym-cluster
 
-                    echo "Waiting for cert-manager CRD and webhook to be ready..."
+                    echo "Waiting for cert-manager deployments..."
                     kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=120s
                     kubectl wait --for=condition=Available deployment/cert-manager-webhook -n cert-manager --timeout=120s
+
+                    echo "Waiting for duckdns-token secret to be synced by External Secrets..."
+                    until kubectl get secret duckdns-token -n cert-manager > /dev/null 2>&1; do
+                        echo "Waiting for secret/duckdns-token in cert-manager..."
+                        sleep 5
+                    done
 
                     # Apply Let's Encrypt ClusterIssuer with email substitution
                     export email="${LETSENCRYPT_EMAIL}"
