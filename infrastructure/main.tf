@@ -33,8 +33,15 @@ module "ecr" {
 
 module "product_images_bucket" {
   source          = "../modules/s3"
-  bucket_name     = "gym-platform-product-images-stg" # env/staging: S3 names are global; suffix keeps it distinct from the primary env
-  allowed_origins = ["http://localhost:3080"] # add the prod frontend URL once it exists
+  bucket_name = "gym-platform-product-images-stg" # env/staging: S3 names are global; suffix keeps it distinct from the primary env
+  # Origins the browser PUTs product images from (presigned S3 upload).
+  # The staging frontend is served from the DuckDNS domain via the ALB;
+  # the localhost entries are for running the SPA against this bucket in dev.
+  allowed_origins = [
+    "https://iti-gym-platform.duckdns.org",
+    "http://localhost:3080",
+    "http://localhost:5173",
+  ]
 }
 
 module "irsa_roles" {
