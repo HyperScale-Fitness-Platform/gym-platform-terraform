@@ -13,6 +13,7 @@
 #   STRIPE_SECRET_KEY      real Stripe secret key   (default: sk_test_PLACEHOLDER)
 #   STRIPE_WEBHOOK_SECRET  Stripe endpoint whsec_…  (default: whsec_PLACEHOLDER)
 #   AUTH_JWT_SECRET        auth-service JWT signing secret (default: random 96 hex)
+#   AI_LLM_API_KEY        ai-service LLM gateway Bearer token (default: PLACEHOLDER)
 #
 set -euo pipefail
 
@@ -21,6 +22,7 @@ AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_PLACEHOLDER}"
 STRIPE_WEBHOOK_SECRET="${STRIPE_WEBHOOK_SECRET:-whsec_PLACEHOLDER}"
 AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-$(openssl rand -hex 48)}"
+AI_LLM_API_KEY="${AI_LLM_API_KEY:-PLACEHOLDER_replace_with_real_ITI_LLM_key}"
 
 rand_pw() { openssl rand -hex 24; }
 
@@ -59,6 +61,12 @@ ensure_secret "gym/${ENV}/auth-service/jwt" "${AUTH_JWT_SECRET}"
 # Stripe keys — {"secret_key":..., "webhook_secret":...}
 ensure_secret "gym/${ENV}/payment-service/stripe" \
   "$(printf '{"secret_key":"%s","webhook_secret":"%s"}' "$STRIPE_SECRET_KEY" "$STRIPE_WEBHOOK_SECRET")"
+
+# ai-service LLM gateway token — {"api_key":...}. Placeholder is fine to start;
+# fill in the real key with put-secret-value, then force-sync the ExternalSecret
+# and restart deploy/ai-service.
+ensure_secret "gym/${ENV}/ai-service/llm" \
+  "$(printf '{"api_key":"%s"}' "$AI_LLM_API_KEY")"
 
 echo "Done. Verify: aws secretsmanager list-secrets --region ${AWS_REGION} \\"
 echo "  --query \"SecretList[?starts_with(Name,'gym/${ENV}/')].Name\""
